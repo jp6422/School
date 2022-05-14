@@ -1,0 +1,141 @@
+---
+title: "Differential Expression Analysis"
+author: "Sana Badri"
+date: "3/1/2022"
+---
+
+setwd("/Users/jonah/School/ASI/final/kallisto")
+>-  Process of analyzing the differences in RNA expression between multiple samples and groups from Counts data.
+getwd()
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, echo = TRUE}
+### LOAD REQUIRED LIBRARIES
+library("DESeq2")
+library("pheatmap")
+library("RColorBrewer")
+library("vsn")
+library("AnnotationDbi")
+library("org.Hs.eg.db")
+library("genefilter")
+library("biomaRt")
+library("IHW")
+library("ggplot2")
+library("apeglm")
+
+
+setwd("C:/Users/jonah/School/ASI/final/kallisto")
+getwd()
+CountTable <- read.table("outputsOrdered_kallisto_small.txt", header=TRUE, row.names=1) 
+samples <- read.table("samplesSmall.txt", header=TRUE)
+names(CountTable) <-row.names(samples)
+
+#dds <- DESeqDataSetFromMatrix(countData = CountTable, colData=samples, design=~batch+condition)
+
+#still need to get proper outputs.txt file that is in the right order! do tomorrow!
+dds <- DESeqDataSetFromMatrix(countData = CountTable, colData=samples, design=~Batch+Condition)
+
+samphi<- samples[1:6,]
+samplow <- samples[7:10,]
+
+View(samples)
+
+#try making objects for pramelo and pramehi
+Counthi <- CountTable[1:6]
+Countlow <- CountTable[7:10]
+
+dds = DESeq(dds)
+counts(dds)->raw_counts
+raw_counts<-as.data.frame(counts(dds))
+
+#again make low and hi dds
+ddslow <- DESeqDataSetFromMatrix(countData = Countlow, colData=samplow, design=~Batch+Condition)
+ddshi <- DESeqDataSetFromMatrix(countData = Counthi, colData=samphi, design=~Batch+Condition)
+
+ddslow <- DESeq(ddslow)
+ddshi <- DESeq(ddshi)
+
+ddslow = DESeq(ddslow)
+ddshi = DESeq(ddshi)
+
+
+ #Not necessary to pre-filter low count genes before running the DESeq2 functions, pre-filtering is useful and can be done by removing rows in which there are very few reads, so we reduce the memory size of the dds data object, and increase the speed of the transformation and testing functions within DESeq2
+
+
+#Create a normalized matrix
+norm_counts = counts(dds, normalized = TRUE)
+
+norm_countslow = counts(ddslow, normalized = TRUE)
+norm_countshi = counts(ddshi, normalized = TRUE)
+
+write.csv(norm_counts, "normalized_counts_small.csv", row.names=TRUE)
+
+write.csv(norm_countslow, "normalized_countslow_kallisto_small.csv", row.names=TRUE)
+write.csv(norm_countshi, "normalized_countshi_kallisto_small.csv", row.names=TRUE)
+
+### PRELIMINARY ANALYSES ###
+# The first steps in your analysis should focus on better understanding the relationship of the datasets being studied. This can
+# be simply achieved by generating a PCA plot showing the relationship of your samples.
+# First we transform our raw count data using a variance stabilizing transformation (VST) that roughly mirrors how DeSeq2 models the data.
+vsd1 <- varianceStabilizingTransformation(dds, blind=FALSE)
+
+vsd1hi <- varianceStabilizingTransformation(ddshi, blind=FALSE)
+vsd1low <- varianceStabilizingTransformation(ddslow, blind=FALSE)
+
+#try changing names in order to plot batch effects
+names(vsd1hi) <- c("A","B","C","A","B","C")
+names(vsd1low) <- c("B","C","B","C")
+
+# Then we plot a PCA, grouping and coloring our datasets according to batch
+#plotPCA(vsd1hi, "Batch")
+plotPCA(vsd1low, "Condition")
+
+```
+
+
+
+```{r BASIC DGE ANALYSIS USING DESEQ2}
+
+#if you have multiple comparisons you can put them in line 120 
+library("clusterProfiler")
+comparisons_hi = rbind(c("PRAME-siRNA","PRAMEhi-ctrl"))
+comparisons_low = rbind(c("PRAMElo-oe","PRAMElo-ctrl"))
+
+
+adj_p_val = 0.1
+abs_log2fc = 0.0
+
+
+for(i in 1:nrow(comparisons_hi)){
+  res = results(ddshi, contrast = c("Condition", comparisons_hi[i,1], comparisons_hi[i,2]))
+  
+  #deterine which rows of res meet adjusted p-val and abs logfc reqs
+  res_sig = res[res[,6] < adj_p_val & !is.na(res[,6]) & abs(res[,2]) >abs_log2fc,]
+  
+  
+  #assign(paste(comparisons[i,1],"_", comparisons[i,2], sep =""), res)
+  #assign(paste(comparisons[i,1],"_", comparisons[i,2],"_sig", sep =""), res_sig)
+}
+
+write.csv(res_sig, "res_sig_hi_kallisto_small_0.1_0.0.csv")
+
+for(i in 1:nrow(comparisons_low)){
+  res1 = results(ddslow, contrast = c("Condition", comparisons_low[i,1], comparisons_low[i,2]))
+  
+  #deterine which rows of res meet adjusted p-val and abs logfc reqs
+  res_sig1 = res1[res1[,6] < adj_p_val & !is.na(res1[,6]) & abs(res1[,2]) >abs_log2fc,]
+  
+  
+  #assign(paste(comparisonslow[i,1],"_", comparisons[i,2], sep =""), res)
+  #assign(paste(comparisons[i,1],"_", comparisons[i,2],"_sig", sep =""), res_sig)
+}
+
+write.csv(res_sig1, "res_sig_low_kallisto_small_0.1_0.0.csv")
+
+```
+
+
+
